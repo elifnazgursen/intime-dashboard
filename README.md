@@ -22,10 +22,14 @@ a set. Each upload is limited to 10 MB.
 
 Daily goals and satisfaction are based only on unique manual survey responses.
 Automatic survey records (including the automatic `99` satisfaction value) are
-not counted. Days without a manual entry display **No goal** and **Not entered**.
-Sleep actual and target hours are shown side by side with the difference and a
-progress indicator; the actual value is the one Aleks entered in the survey,
-not the sensor-derived average sleep-session duration.
+not counted. Days without a manual entry display **No data** and satisfaction as **Not
+entered**. Sleep actual and target hours are shown side by side with a progress
+indicator; the actual value is the one Aleks entered in the survey, not the
+sensor-derived average sleep-session duration.
+
+The daily activity trend includes recorded activity, survey-entered activity
+and goal series, and satisfaction points. Hours use the left axis and
+satisfaction points use a separate right axis.
 
 The local CSV files are excluded by `.gitignore` because they may contain user
 identifiers. Do not commit them or deploy them with the application source.

@@ -241,6 +241,59 @@ def make_interactive_trend_chart(
     )
 
 
+def make_daily_activity_trend_chart(data: pd.DataFrame) -> alt.LayerChart:
+    series_names = sorted(data["Series"].dropna().unique().tolist())
+    legend_selection = alt.selection_point(
+        fields=["Series"],
+        bind="legend",
+        toggle="true",
+    )
+    base = alt.Chart(data).encode(
+        x=alt.X(
+            "date:T",
+            title="Date",
+            axis=alt.Axis(format="%b %d", labelAngle=0),
+        ),
+        color=alt.Color(
+            "Series:N",
+            title="Click legend items to highlight",
+            scale=alt.Scale(domain=series_names),
+            legend=alt.Legend(orient="right"),
+        ),
+        opacity=alt.condition(
+            legend_selection,
+            alt.value(1),
+            alt.value(0.12),
+        ),
+        tooltip=[
+            alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
+            alt.Tooltip("Series:N", title="Measure"),
+            alt.Tooltip("Value:Q", format=".2f"),
+            alt.Tooltip("Unit:N", title="Unit"),
+        ],
+    )
+    hours_chart = base.transform_filter(
+        alt.datum.Unit == "hours"
+    ).mark_line(point=True).encode(
+        y=alt.Y("Value:Q", title="Hours", axis=alt.Axis(orient="left"))
+    )
+    points_chart = base.transform_filter(
+        alt.datum.Unit == "points"
+    ).mark_line(point=True).encode(
+        y=alt.Y(
+            "Value:Q",
+            title="Satisfaction points",
+            axis=alt.Axis(orient="right"),
+            scale=alt.Scale(zero=False),
+        )
+    )
+    return (
+        alt.layer(hours_chart, points_chart)
+        .resolve_scale(y="independent")
+        .add_params(legend_selection)
+    )
+
+
 def show_csv_dashboard(
     daily: pd.DataFrame,
     weekly: pd.DataFrame,
@@ -301,22 +354,14 @@ def show_csv_dashboard(
         goal_satisfaction["date"].dt.date == selected_date
     ]
     if selected_goal.empty or not bool(selected_goal.iloc[0]["goal_entered"]):
-        st.info(
-            "No goal — Aleks did not enter a manual goal for this day. "
-            "Automatic 99 entries are not treated as goals or satisfaction responses."
-        )
+        st.write("No data")
         st.metric("Satisfaction points", "Not entered")
     else:
         goal = selected_goal.iloc[0]
         sleep_actual = goal["sleep_actual_hours"]
         sleep_target = goal["sleep_target_hours"]
-        sleep_difference = (
-            sleep_actual - sleep_target
-            if pd.notna(sleep_actual) and pd.notna(sleep_target)
-            else pd.NA
-        )
 
-        sleep_metrics = st.columns(4)
+        sleep_metrics = st.columns(3)
         sleep_metrics[0].metric(
             "Sleep entered for the day",
             format_value(sleep_actual, "hours"),
@@ -326,11 +371,6 @@ def show_csv_dashboard(
             format_value(sleep_target, "hours"),
         )
         sleep_metrics[2].metric(
-            "Difference from goal",
-            format_value(sleep_difference, "hours"),
-            delta_color="off",
-        )
-        sleep_metrics[3].metric(
             "Satisfaction points",
             (
                 f"{format_value(goal['satisfaction_points'], precision=0)} pts"
@@ -361,23 +401,19 @@ def show_csv_dashboard(
             target = goal[target_field]
             if pd.isna(target) or target <= 0:
                 status = "No goal"
-                difference = pd.NA
             elif pd.isna(actual):
                 status = "No actual value"
-                difference = pd.NA
             else:
-                difference = actual - target
                 status = (
                     "Goal reached"
                     if actual >= target
-                    else f"Below by {format_value(target - actual, 'hours')}"
+                    else "Below goal"
                 )
             comparison_rows.append(
                 {
                     "Activity": activity,
                     "Actual (hours)": actual,
                     "Goal (hours)": target,
-                    "Difference (hours)": difference,
                     "Status": status,
                 }
             )
@@ -430,24 +466,54 @@ def show_csv_dashboard(
     st.subheader("Activity trends")
     daily_tab, weekly_tab = st.tabs(["Daily trend", "Weekly overview"])
     with daily_tab:
-        trend_data = daily[["date", *CSV_ACTIVITY_COLUMNS.values()]].rename(
+        activity_trend = daily[["date", *CSV_ACTIVITY_COLUMNS.values()]].rename(
             columns={field: label for label, field in CSV_ACTIVITY_COLUMNS.items()}
         ).melt(
             id_vars="date",
-            var_name="Activity",
-            value_name="Hours",
+            var_name="Series",
+            value_name="Value",
         ).dropna()
+        activity_trend["Unit"] = "hours"
+        trend_parts = [activity_trend]
+
+        entered_goals = goal_satisfaction.loc[goal_satisfaction["goal_entered"]]
+        if not entered_goals.empty:
+            goal_series = []
+            for activity, (actual_field, target_field) in GOAL_ACTIVITY_COLUMNS.items():
+                goal_series.append(
+                    entered_goals[["date", actual_field, target_field]].rename(
+                        columns={
+                            actual_field: f"{activity} entered",
+                            target_field: f"{activity} goal",
+                        }
+                    ).melt(
+                        id_vars="date",
+                        var_name="Series",
+                        value_name="Value",
+                    )
+                )
+            goals_trend = pd.concat(goal_series, ignore_index=True).dropna()
+            goals_trend["Unit"] = "hours"
+            trend_parts.append(goals_trend)
+
+            satisfaction_trend = entered_goals[
+                ["date", "satisfaction_points"]
+            ].rename(
+                columns={"satisfaction_points": "Value"}
+            )
+            satisfaction_trend["Series"] = "Satisfaction points"
+            satisfaction_trend["Unit"] = "points"
+            trend_parts.append(satisfaction_trend.dropna(subset=["Value"]))
+
+        trend_data = pd.concat(trend_parts, ignore_index=True)
         if trend_data.empty:
             st.info("There is not enough data to show a daily trend.")
         else:
-            st.caption("Click one or more legend items to highlight activities.")
-            trend_chart = make_interactive_trend_chart(
-                trend_data,
-                "date",
-                "Activity",
-                "Date",
-                "Hours",
+            st.caption(
+                "Click one or more legend items to highlight a series. "
+                "Hours use the left axis; satisfaction points use the right axis."
             )
+            trend_chart = make_daily_activity_trend_chart(trend_data)
             st.altair_chart(trend_chart, width="stretch", theme="streamlit")
 
         daily_table = daily[
@@ -477,70 +543,6 @@ def show_csv_dashboard(
             hide_index=True,
             width="stretch",
         )
-
-        entered_goals = goal_satisfaction.loc[goal_satisfaction["goal_entered"]]
-        if not entered_goals.empty:
-            sleep_trend = entered_goals[
-                ["date", "sleep_actual_hours", "sleep_target_hours"]
-            ].rename(
-                columns={
-                    "sleep_actual_hours": "Sleep entered",
-                    "sleep_target_hours": "Sleep goal",
-                }
-            ).melt(
-                id_vars="date",
-                var_name="Measure",
-                value_name="Hours",
-            ).dropna()
-            st.subheader("Sleep entered vs daily goal")
-            st.altair_chart(
-                make_interactive_trend_chart(
-                    sleep_trend,
-                    "date",
-                    "Measure",
-                    "Date",
-                    "Hours",
-                ),
-                width="stretch",
-                theme="streamlit",
-            )
-
-            satisfaction_trend = entered_goals[
-                ["date", "satisfaction_points"]
-            ].dropna()
-            if not satisfaction_trend.empty:
-                satisfaction_chart = (
-                    alt.Chart(satisfaction_trend)
-                    .mark_line(point=True)
-                    .encode(
-                        x=alt.X(
-                            "date:T",
-                            title="Date",
-                            axis=alt.Axis(format="%b %d", labelAngle=0),
-                        ),
-                        y=alt.Y(
-                            "satisfaction_points:Q",
-                            title="Satisfaction points",
-                        ),
-                        tooltip=[
-                            alt.Tooltip(
-                                "date:T",
-                                title="Date",
-                                format="%Y-%m-%d",
-                            ),
-                            alt.Tooltip(
-                                "satisfaction_points:Q",
-                                title="Satisfaction points",
-                            ),
-                        ],
-                    )
-                )
-                st.subheader("Daily satisfaction points")
-                st.altair_chart(
-                    satisfaction_chart,
-                    width="stretch",
-                    theme="streamlit",
-                )
 
     with weekly_tab:
         weekly_activity_columns = {
