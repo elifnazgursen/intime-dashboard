@@ -56,12 +56,11 @@ GOAL_SATISFACTION_REQUIRED_COLUMNS = {
 
 CSV_ACTIVITY_COLUMNS = {
     "Commuting": "commuting_hours",
-    "Study": "study_hours",
     "Eating": "eating_hours",
 }
 GOAL_ACTIVITY_COLUMNS = {
     "Sleep": ("sleep_actual_hours", "sleep_target_hours"),
-    "Study": ("study_actual_hours", "study_target_hours"),
+    "Study entered": ("study_actual_hours", "study_target_hours"),
     "Sports": ("sports_actual_hours", "sports_target_hours"),
     "Hobby entered": ("hobby_actual_hours", "hobby_target_hours"),
 }
@@ -335,14 +334,14 @@ def show_csv_dashboard(
     for column, (label, field) in zip(
         other_metrics,
         [
-            ("Study", "study_hours"),
+            ("Study entered", "study_actual_hours"),
             ("Hobby entered", "hobby_actual_hours"),
             ("Eating", "eating_hours"),
         ],
     ):
         value = (
             goal.get(field, pd.NA)
-            if label == "Hobby entered"
+            if label in {"Study entered", "Hobby entered"}
             else day.get(field, pd.NA)
         )
         column.metric(label, format_value(value, "hours"))
@@ -419,13 +418,16 @@ def show_csv_dashboard(
 
     st.subheader("Selected day's activity durations")
     st.caption(
-        "Hobby entered is from Aleks's manual survey response. Recorded "
-        "activity bars show daily totals."
+        "Study entered and Hobby entered are from Aleks's manual survey "
+        "responses. Other activity bars show recorded daily totals."
     )
     selected_activity_values = [
         (label, day.get(field, pd.NA))
         for label, field in CSV_ACTIVITY_COLUMNS.items()
     ]
+    selected_activity_values.append(
+        ("Study entered", goal.get("study_actual_hours", pd.NA))
+    )
     selected_activity_values.append(
         ("Hobby entered", goal.get("hobby_actual_hours", pd.NA))
     )
@@ -525,7 +527,6 @@ def show_csv_dashboard(
                 "date",
                 "commuting_hours",
                 "estimated_distance_km",
-                "study_hours",
                 "eating_hours",
             ]
         ].rename(
@@ -533,17 +534,19 @@ def show_csv_dashboard(
                 "date": "Date",
                 "commuting_hours": "Commute (hours)",
                 "estimated_distance_km": "Estimated distance (km)",
-                "study_hours": "Study (hours)",
                 "eating_hours": "Eating (hours)",
             }
         )
-        hobby_by_date = goal_satisfaction.loc[
+        entered_by_date = goal_satisfaction.loc[
             goal_satisfaction["goal_entered"]
-        ].set_index(goal_satisfaction.loc[goal_satisfaction["goal_entered"], "date"].dt.date)[
-            "hobby_actual_hours"
-        ]
+        ].set_index(
+            goal_satisfaction.loc[goal_satisfaction["goal_entered"], "date"].dt.date
+        )
+        daily_table["Study entered (hours)"] = daily["date"].dt.date.map(
+            entered_by_date["study_actual_hours"]
+        ).to_numpy()
         daily_table["Hobby entered (hours)"] = daily["date"].dt.date.map(
-            hobby_by_date
+            entered_by_date["hobby_actual_hours"]
         ).to_numpy()
         daily_table["Date"] = daily_table["Date"].dt.strftime("%Y-%m-%d")
         st.dataframe(
@@ -578,7 +581,12 @@ def show_csv_dashboard(
             goal_satisfaction["goal_entered"]
             & goal_satisfaction["hobby_actual_hours"].notna()
         ]
+        manual_study = goal_satisfaction.loc[
+            goal_satisfaction["goal_entered"]
+            & goal_satisfaction["study_actual_hours"].notna()
+        ]
         weekly_hobby_rows = []
+        weekly_study_rows = []
         for _, week in weekly.iterrows():
             week_start = week["week_start"].date()
             week_end = week["week_end"].date()
@@ -593,10 +601,22 @@ def show_csv_dashboard(
                     "Hours": week_values.mean() if not week_values.empty else pd.NA,
                 }
             )
+            study_values = manual_study.loc[
+                manual_study["date"].dt.date.between(week_start, week_end),
+                "study_actual_hours",
+            ]
+            weekly_study_rows.append(
+                {
+                    "Week": week["week_start"],
+                    "Measure": "Avg. daily study entered",
+                    "Hours": study_values.mean() if not study_values.empty else pd.NA,
+                }
+            )
         weekly_hobby_trend = pd.DataFrame(weekly_hobby_rows).dropna()
-        if not weekly_hobby_trend.empty:
+        weekly_study_trend = pd.DataFrame(weekly_study_rows).dropna()
+        if not weekly_hobby_trend.empty or not weekly_study_trend.empty:
             weekly_trend = pd.concat(
-                [weekly_trend, weekly_hobby_trend],
+                [weekly_trend, weekly_study_trend, weekly_hobby_trend],
                 ignore_index=True,
             )
         if not weekly_trend.empty:
@@ -619,7 +639,6 @@ def show_csv_dashboard(
                 "days_with_data",
                 "average_daily_commuting_hours",
                 "average_daily_estimated_distance_km",
-                "average_daily_study_hours",
                 "average_daily_eating_hours",
             ]
         ].rename(
@@ -629,10 +648,12 @@ def show_csv_dashboard(
                 "days_with_data": "Days with data",
                 "average_daily_commuting_hours": "Avg. daily commute (hours)",
                 "average_daily_estimated_distance_km": "Avg. daily distance (km)",
-                "average_daily_study_hours": "Avg. daily study (hours)",
                 "average_daily_eating_hours": "Avg. daily eating (hours)",
             }
         )
+        weekly_table["Avg. daily study entered (hours)"] = [
+            row["Hours"] for row in weekly_study_rows
+        ]
         weekly_table["Avg. daily hobby entered (hours)"] = [
             row["Hours"] for row in weekly_hobby_rows
         ]

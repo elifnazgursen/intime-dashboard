@@ -47,9 +47,9 @@ are also public so the hosted dashboard can display them.
 
 ## What the dashboard shows
 
-- A selected day's commute duration, estimated distance, and average recorded
-  sleep-session duration
-- Daily study and eating durations, plus Aleks-entered hobby hours and goal
+- A selected day's commute duration and estimated distance
+- Survey-entered study and hobby durations, sleep duration and goal, and
+  satisfaction points; recorded study totals are not shown
 - Daily and weekly trends with clickable chart legends
 - A compact full-period summary
 
@@ -59,8 +59,7 @@ the vertical axis. Click a legend item to highlight that series; the other
 lines fade into the background. The chart data is reshaped with Pandas before
 Altair encodes the axes, colors, and tooltips.
 
-The sleep value in these files is an average recorded session, not a daily
-total. Installation identifiers and GPS diagnostic fields are hidden.
+Installation identifiers and GPS diagnostic fields are hidden.
 
 ## Run locally
 
