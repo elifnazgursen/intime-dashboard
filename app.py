@@ -252,7 +252,12 @@ def make_daily_activity_trend_chart(data: pd.DataFrame) -> alt.LayerChart:
             "Series:N",
             title="Click legend items to highlight",
             scale=alt.Scale(domain=series_names),
-            legend=alt.Legend(orient="right"),
+            legend=alt.Legend(
+                orient="bottom",
+                direction="horizontal",
+                columns=4,
+                labelLimit=180,
+            ),
         ),
         opacity=alt.condition(
             legend_selection,
@@ -285,6 +290,7 @@ def make_daily_activity_trend_chart(data: pd.DataFrame) -> alt.LayerChart:
         alt.layer(hours_chart, points_chart)
         .resolve_scale(y="independent")
         .add_params(legend_selection)
+        .properties(height=480)
     )
 
 

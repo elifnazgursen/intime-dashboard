@@ -55,9 +55,10 @@ are also public so the hosted dashboard can display them.
 
 The selected-day activity comparison is a horizontal bar chart. Daily and
 weekly trends are line charts, with dates on the horizontal axis and hours on
-the vertical axis. Click a legend item to highlight that series; the other
-lines fade into the background. The chart data is reshaped with Pandas before
-Altair encodes the axes, colors, and tooltips.
+the vertical axis. The larger daily trend places its clickable legend below
+the graph. Click a legend item to highlight that series; the other lines fade
+into the background. The chart data is reshaped with Pandas before Altair
+encodes the axes, colors, and tooltips.
 
 Installation identifiers and GPS diagnostic fields are hidden.
 
