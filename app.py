@@ -56,7 +56,6 @@ GOAL_SATISFACTION_REQUIRED_COLUMNS = {
 
 CSV_ACTIVITY_COLUMNS = {
     "Commuting": "commuting_hours",
-    "Average sleep session": "average_recorded_sleep_session_hours",
     "Study": "study_hours",
     "Eating": "eating_hours",
 }
@@ -322,25 +321,15 @@ def show_csv_dashboard(
         else pd.Series(dtype="object")
     )
 
-    primary_metrics = st.columns(3)
+    primary_metrics = st.columns(2)
     for column, (label, field, unit, precision) in zip(
         primary_metrics,
         [
             ("Commute duration", "commuting_hours", "hours", 1),
             ("Estimated distance", "estimated_distance_km", "km", 3),
-            (
-                "Average sleep session",
-                "average_recorded_sleep_session_hours",
-                "hours",
-                1,
-            ),
         ],
     ):
         column.metric(label, format_value(day.get(field, pd.NA), unit, precision))
-
-    st.caption(
-        "Sleep is shown as the average recorded session, not a daily total."
-    )
 
     other_metrics = st.columns(3)
     for column, (label, field) in zip(
@@ -536,7 +525,6 @@ def show_csv_dashboard(
                 "date",
                 "commuting_hours",
                 "estimated_distance_km",
-                "average_recorded_sleep_session_hours",
                 "study_hours",
                 "eating_hours",
             ]
@@ -545,7 +533,6 @@ def show_csv_dashboard(
                 "date": "Date",
                 "commuting_hours": "Commute (hours)",
                 "estimated_distance_km": "Estimated distance (km)",
-                "average_recorded_sleep_session_hours": "Avg. sleep session (hours)",
                 "study_hours": "Study (hours)",
                 "eating_hours": "Eating (hours)",
             }
@@ -568,7 +555,6 @@ def show_csv_dashboard(
     with weekly_tab:
         weekly_activity_columns = {
             "Avg. daily commute": "average_daily_commuting_hours",
-            "Avg. sleep session": "average_recorded_sleep_session_hours",
         }
         weekly_trend = weekly[
             [
@@ -633,7 +619,6 @@ def show_csv_dashboard(
                 "days_with_data",
                 "average_daily_commuting_hours",
                 "average_daily_estimated_distance_km",
-                "average_recorded_sleep_session_hours",
                 "average_daily_study_hours",
                 "average_daily_eating_hours",
             ]
@@ -644,7 +629,6 @@ def show_csv_dashboard(
                 "days_with_data": "Days with data",
                 "average_daily_commuting_hours": "Avg. daily commute (hours)",
                 "average_daily_estimated_distance_km": "Avg. daily distance (km)",
-                "average_recorded_sleep_session_hours": "Avg. sleep session (hours)",
                 "average_daily_study_hours": "Avg. daily study (hours)",
                 "average_daily_eating_hours": "Avg. daily eating (hours)",
             }
