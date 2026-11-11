@@ -18,7 +18,6 @@ DAILY_REQUIRED_COLUMNS = {
     "average_recorded_sleep_session_hours",
     "completed_sleep_sessions",
     "study_hours",
-    "hobby_hours",
     "eating_hours",
 }
 WEEKLY_REQUIRED_COLUMNS = {
@@ -29,7 +28,6 @@ WEEKLY_REQUIRED_COLUMNS = {
     "average_daily_estimated_distance_km",
     "average_recorded_sleep_session_hours",
     "average_daily_study_hours",
-    "average_daily_hobby_hours",
     "average_daily_eating_hours",
 }
 OVERALL_REQUIRED_COLUMNS = {
@@ -40,7 +38,6 @@ OVERALL_REQUIRED_COLUMNS = {
     "total_estimated_distance_km",
     "total_reconstructed_recorded_sleep_hours",
     "total_study_hours",
-    "total_hobby_hours",
     "total_eating_hours",
 }
 GOAL_SATISFACTION_REQUIRED_COLUMNS = {
@@ -61,14 +58,13 @@ CSV_ACTIVITY_COLUMNS = {
     "Commuting": "commuting_hours",
     "Average sleep session": "average_recorded_sleep_session_hours",
     "Study": "study_hours",
-    "Hobby": "hobby_hours",
     "Eating": "eating_hours",
 }
 GOAL_ACTIVITY_COLUMNS = {
     "Sleep": ("sleep_actual_hours", "sleep_target_hours"),
     "Study": ("study_actual_hours", "study_target_hours"),
     "Sports": ("sports_actual_hours", "sports_target_hours"),
-    "Hobby": ("hobby_actual_hours", "hobby_target_hours"),
+    "Hobby entered": ("hobby_actual_hours", "hobby_target_hours"),
 }
 
 
@@ -317,6 +313,14 @@ def show_csv_dashboard(
         if not selected_day.empty
         else pd.Series(dtype="object")
     )
+    selected_goal = goal_satisfaction.loc[
+        goal_satisfaction["date"].dt.date == selected_date
+    ]
+    goal = (
+        selected_goal.iloc[0]
+        if not selected_goal.empty and bool(selected_goal.iloc[0]["goal_entered"])
+        else pd.Series(dtype="object")
+    )
 
     primary_metrics = st.columns(3)
     for column, (label, field, unit, precision) in zip(
@@ -343,21 +347,22 @@ def show_csv_dashboard(
         other_metrics,
         [
             ("Study", "study_hours"),
-            ("Hobby", "hobby_hours"),
+            ("Hobby entered", "hobby_actual_hours"),
             ("Eating", "eating_hours"),
         ],
     ):
-        column.metric(label, format_value(day.get(field, pd.NA), "hours"))
+        value = (
+            goal.get(field, pd.NA)
+            if label == "Hobby entered"
+            else day.get(field, pd.NA)
+        )
+        column.metric(label, format_value(value, "hours"))
 
     st.subheader("Daily goals and satisfaction")
-    selected_goal = goal_satisfaction.loc[
-        goal_satisfaction["date"].dt.date == selected_date
-    ]
-    if selected_goal.empty or not bool(selected_goal.iloc[0]["goal_entered"]):
+    if goal.empty:
         st.write("No data")
         st.metric("Satisfaction points", "Not entered")
     else:
-        goal = selected_goal.iloc[0]
         sleep_actual = goal["sleep_actual_hours"]
         sleep_target = goal["sleep_target_hours"]
 
@@ -423,15 +428,20 @@ def show_csv_dashboard(
             width="stretch",
         )
 
-    st.subheader("Selected day's recorded activities")
+    st.subheader("Selected day's activity durations")
     st.caption(
-        "Sleep is an average session; the other bars show daily totals."
+        "Hobby entered is from Aleks's manual survey response. Sleep is an "
+        "average session; other recorded activity bars show daily totals."
+    )
+    selected_activity_values = [
+        (label, day.get(field, pd.NA))
+        for label, field in CSV_ACTIVITY_COLUMNS.items()
+    ]
+    selected_activity_values.append(
+        ("Hobby entered", goal.get("hobby_actual_hours", pd.NA))
     )
     activity_chart_data = pd.DataFrame(
-        [
-            (label, day.get(field, pd.NA))
-            for label, field in CSV_ACTIVITY_COLUMNS.items()
-        ],
+        selected_activity_values,
         columns=["Activity", "Hours"],
     ).dropna()
     if activity_chart_data.empty:
@@ -480,11 +490,16 @@ def show_csv_dashboard(
         if not entered_goals.empty:
             goal_series = []
             for activity, (actual_field, target_field) in GOAL_ACTIVITY_COLUMNS.items():
+                activity_name = activity.removesuffix(" entered")
                 goal_series.append(
                     entered_goals[["date", actual_field, target_field]].rename(
                         columns={
-                            actual_field: f"{activity} entered",
-                            target_field: f"{activity} goal",
+                            actual_field: (
+                                activity
+                                if activity.endswith(" entered")
+                                else f"{activity} entered"
+                            ),
+                            target_field: f"{activity_name} goal",
                         }
                     ).melt(
                         id_vars="date",
@@ -523,7 +538,6 @@ def show_csv_dashboard(
                 "estimated_distance_km",
                 "average_recorded_sleep_session_hours",
                 "study_hours",
-                "hobby_hours",
                 "eating_hours",
             ]
         ].rename(
@@ -533,10 +547,17 @@ def show_csv_dashboard(
                 "estimated_distance_km": "Estimated distance (km)",
                 "average_recorded_sleep_session_hours": "Avg. sleep session (hours)",
                 "study_hours": "Study (hours)",
-                "hobby_hours": "Hobby (hours)",
                 "eating_hours": "Eating (hours)",
             }
         )
+        hobby_by_date = goal_satisfaction.loc[
+            goal_satisfaction["goal_entered"]
+        ].set_index(goal_satisfaction.loc[goal_satisfaction["goal_entered"], "date"].dt.date)[
+            "hobby_actual_hours"
+        ]
+        daily_table["Hobby entered (hours)"] = daily["date"].dt.date.map(
+            hobby_by_date
+        ).to_numpy()
         daily_table["Date"] = daily_table["Date"].dt.strftime("%Y-%m-%d")
         st.dataframe(
             daily_table.sort_values("Date", ascending=False),
@@ -567,6 +588,31 @@ def show_csv_dashboard(
             var_name="Measure",
             value_name="Hours",
         ).dropna()
+        manual_hobby = goal_satisfaction.loc[
+            goal_satisfaction["goal_entered"]
+            & goal_satisfaction["hobby_actual_hours"].notna()
+        ]
+        weekly_hobby_rows = []
+        for _, week in weekly.iterrows():
+            week_start = week["week_start"].date()
+            week_end = week["week_end"].date()
+            week_values = manual_hobby.loc[
+                manual_hobby["date"].dt.date.between(week_start, week_end),
+                "hobby_actual_hours",
+            ]
+            weekly_hobby_rows.append(
+                {
+                    "Week": week["week_start"],
+                    "Measure": "Avg. daily hobby entered",
+                    "Hours": week_values.mean() if not week_values.empty else pd.NA,
+                }
+            )
+        weekly_hobby_trend = pd.DataFrame(weekly_hobby_rows).dropna()
+        if not weekly_hobby_trend.empty:
+            weekly_trend = pd.concat(
+                [weekly_trend, weekly_hobby_trend],
+                ignore_index=True,
+            )
         if not weekly_trend.empty:
             st.caption("Click one or more legend items to highlight measures.")
             weekly_chart = make_interactive_trend_chart(
@@ -589,7 +635,6 @@ def show_csv_dashboard(
                 "average_daily_estimated_distance_km",
                 "average_recorded_sleep_session_hours",
                 "average_daily_study_hours",
-                "average_daily_hobby_hours",
                 "average_daily_eating_hours",
             ]
         ].rename(
@@ -601,10 +646,12 @@ def show_csv_dashboard(
                 "average_daily_estimated_distance_km": "Avg. daily distance (km)",
                 "average_recorded_sleep_session_hours": "Avg. sleep session (hours)",
                 "average_daily_study_hours": "Avg. daily study (hours)",
-                "average_daily_hobby_hours": "Avg. daily hobby (hours)",
                 "average_daily_eating_hours": "Avg. daily eating (hours)",
             }
         )
+        weekly_table["Avg. daily hobby entered (hours)"] = [
+            row["Hours"] for row in weekly_hobby_rows
+        ]
         for column in ("Week starting", "Week ending"):
             weekly_table[column] = weekly_table[column].dt.strftime("%Y-%m-%d")
         st.dataframe(
@@ -618,27 +665,38 @@ def show_csv_dashboard(
             f"{overall_row['tracking_start_date']:%Y-%m-%d} – "
             f"{overall_row['tracking_end_date']:%Y-%m-%d}"
         )
-        overall_metrics = st.columns(4)
-        for column, (label, field, unit) in zip(
+        tracking_start = pd.to_datetime(overall_row["tracking_start_date"])
+        tracking_end = pd.to_datetime(overall_row["tracking_end_date"])
+        period_hobby = goal_satisfaction.loc[
+            goal_satisfaction["goal_entered"]
+            & goal_satisfaction["date"].between(tracking_start, tracking_end),
+            "hobby_actual_hours",
+        ].dropna()
+        total_hobby_entered = (
+            period_hobby.sum() if not period_hobby.empty else pd.NA
+        )
+        overall_metrics = st.columns(5)
+        for column, (label, value, unit) in zip(
             overall_metrics,
             [
-                ("Days with data", "days_with_any_data", "days"),
-                ("Total commute", "total_commuting_hours", "hours"),
-                ("Estimated distance", "total_estimated_distance_km", "km"),
+                ("Days with data", overall_row["days_with_any_data"], "days"),
+                ("Total commute", overall_row["total_commuting_hours"], "hours"),
+                ("Estimated distance", overall_row["total_estimated_distance_km"], "km"),
                 (
                     "Recorded sleep",
-                    "total_reconstructed_recorded_sleep_hours",
+                    overall_row["total_reconstructed_recorded_sleep_hours"],
                     "hours",
                 ),
+                ("Total hobby entered", total_hobby_entered, "hours"),
             ],
         ):
             precision = 0 if unit == "days" else 1
             column.metric(
                 label,
                 (
-                    f"{int(overall_row[field])} days"
+                    f"{int(value)} days"
                     if unit == "days"
-                    else format_value(overall_row[field], unit, precision)
+                    else format_value(value, unit, precision)
                 ),
             )
 
