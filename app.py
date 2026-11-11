@@ -419,8 +419,8 @@ def show_csv_dashboard(
 
     st.subheader("Selected day's activity durations")
     st.caption(
-        "Hobby entered is from Aleks's manual survey response. Sleep is an "
-        "average session; other recorded activity bars show daily totals."
+        "Hobby entered is from Aleks's manual survey response. Recorded "
+        "activity bars show daily totals."
     )
     selected_activity_values = [
         (label, day.get(field, pd.NA))
