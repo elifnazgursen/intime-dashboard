@@ -43,6 +43,19 @@ OVERALL_REQUIRED_COLUMNS = {
     "total_hobby_hours",
     "total_eating_hours",
 }
+GOAL_SATISFACTION_REQUIRED_COLUMNS = {
+    "date",
+    "goal_entered",
+    "satisfaction_points",
+    "sleep_actual_hours",
+    "sleep_target_hours",
+    "study_actual_hours",
+    "study_target_hours",
+    "sports_actual_hours",
+    "sports_target_hours",
+    "hobby_actual_hours",
+    "hobby_target_hours",
+}
 
 CSV_ACTIVITY_COLUMNS = {
     "Commuting": "commuting_hours",
@@ -50,6 +63,12 @@ CSV_ACTIVITY_COLUMNS = {
     "Study": "study_hours",
     "Hobby": "hobby_hours",
     "Eating": "eating_hours",
+}
+GOAL_ACTIVITY_COLUMNS = {
+    "Sleep": ("sleep_actual_hours", "sleep_target_hours"),
+    "Study": ("study_actual_hours", "study_target_hours"),
+    "Sports": ("sports_actual_hours", "sports_target_hours"),
+    "Hobby": ("hobby_actual_hours", "hobby_target_hours"),
 }
 
 
@@ -110,6 +129,65 @@ def validate_csv_data(
     return data
 
 
+def read_goal_satisfaction_csv(
+    file_path: Path | None = None,
+    uploaded_file: IO[bytes] | None = None,
+) -> pd.DataFrame:
+    if uploaded_file is not None:
+        goal_data = read_uploaded_csv_file(
+            uploaded_file,
+            "Daily goals and satisfaction",
+            GOAL_SATISFACTION_REQUIRED_COLUMNS,
+            ("date",),
+        )
+    elif file_path is not None:
+        goal_data = read_csv_file(
+            file_path,
+            "Daily goals and satisfaction",
+            GOAL_SATISFACTION_REQUIRED_COLUMNS,
+            ("date",),
+        )
+    else:
+        return pd.DataFrame(
+            {
+                column: pd.Series(dtype="object")
+                for column in GOAL_SATISFACTION_REQUIRED_COLUMNS
+            }
+        ).assign(
+            date=pd.Series(dtype="datetime64[ns]"),
+            goal_entered=pd.Series(dtype="bool"),
+        )
+
+    goal_status = (
+        goal_data["goal_entered"]
+        .astype("string")
+        .str.strip()
+        .str.casefold()
+        .map({"true": True, "false": False})
+    )
+    if goal_status.isna().any():
+        st.error("Daily goals and satisfaction contains an invalid goal_entered value.")
+        st.stop()
+    goal_data["goal_entered"] = goal_status
+
+    numeric_columns = GOAL_SATISFACTION_REQUIRED_COLUMNS - {
+        "date",
+        "goal_entered",
+    }
+    for column in numeric_columns:
+        original_values = goal_data[column]
+        numeric_values = pd.to_numeric(original_values, errors="coerce")
+        if (original_values.notna() & numeric_values.isna()).any():
+            st.error(
+                f"Daily goals and satisfaction contains a non-numeric value "
+                f"in '{column}'."
+            )
+            st.stop()
+        goal_data[column] = numeric_values
+
+    return goal_data
+
+
 def format_value(value: object, unit: str = "", precision: int = 1) -> str:
     if pd.isna(value):
         return "—"
@@ -167,16 +245,25 @@ def show_csv_dashboard(
     daily: pd.DataFrame,
     weekly: pd.DataFrame,
     overall: pd.DataFrame,
+    goal_satisfaction: pd.DataFrame,
 ) -> None:
     overall_row = overall.iloc[0]
 
     st.subheader("Daily summary")
+    available_dates = set(daily["date"].dt.date)
+    if not goal_satisfaction.empty:
+        available_dates.update(goal_satisfaction["date"].dt.date)
     selected_date = st.selectbox(
         "Select a day",
-        options=sorted(daily["date"].dt.date.unique(), reverse=True),
+        options=sorted(available_dates, reverse=True),
         format_func=lambda value: value.strftime("%A, %B %d, %Y"),
     )
-    day = daily.loc[daily["date"].dt.date == selected_date].iloc[0]
+    selected_day = daily.loc[daily["date"].dt.date == selected_date]
+    day = (
+        selected_day.iloc[0]
+        if not selected_day.empty
+        else pd.Series(dtype="object")
+    )
 
     primary_metrics = st.columns(3)
     for column, (label, field, unit, precision) in zip(
@@ -192,7 +279,7 @@ def show_csv_dashboard(
             ),
         ],
     ):
-        column.metric(label, format_value(day[field], unit, precision))
+        column.metric(label, format_value(day.get(field, pd.NA), unit, precision))
 
     st.caption(
         "Sleep is shown as the average recorded session, not a daily total."
@@ -207,7 +294,98 @@ def show_csv_dashboard(
             ("Eating", "eating_hours"),
         ],
     ):
-        column.metric(label, format_value(day[field], "hours"))
+        column.metric(label, format_value(day.get(field, pd.NA), "hours"))
+
+    st.subheader("Daily goals and satisfaction")
+    selected_goal = goal_satisfaction.loc[
+        goal_satisfaction["date"].dt.date == selected_date
+    ]
+    if selected_goal.empty or not bool(selected_goal.iloc[0]["goal_entered"]):
+        st.info(
+            "No goal — Aleks did not enter a manual goal for this day. "
+            "Automatic 99 entries are not treated as goals or satisfaction responses."
+        )
+        st.metric("Satisfaction points", "Not entered")
+    else:
+        goal = selected_goal.iloc[0]
+        sleep_actual = goal["sleep_actual_hours"]
+        sleep_target = goal["sleep_target_hours"]
+        sleep_difference = (
+            sleep_actual - sleep_target
+            if pd.notna(sleep_actual) and pd.notna(sleep_target)
+            else pd.NA
+        )
+
+        sleep_metrics = st.columns(4)
+        sleep_metrics[0].metric(
+            "Sleep entered for the day",
+            format_value(sleep_actual, "hours"),
+        )
+        sleep_metrics[1].metric(
+            "Sleep goal",
+            format_value(sleep_target, "hours"),
+        )
+        sleep_metrics[2].metric(
+            "Difference from goal",
+            format_value(sleep_difference, "hours"),
+            delta_color="off",
+        )
+        sleep_metrics[3].metric(
+            "Satisfaction points",
+            (
+                f"{format_value(goal['satisfaction_points'], precision=0)} pts"
+                if pd.notna(goal["satisfaction_points"])
+                else "Not entered"
+            ),
+        )
+
+        if pd.notna(sleep_actual) and pd.notna(sleep_target) and sleep_target > 0:
+            progress = min(max(float(sleep_actual) / float(sleep_target), 0.0), 1.0)
+            st.progress(progress, text="Sleep goal progress")
+            if sleep_actual >= sleep_target:
+                st.success(
+                    f"Sleep goal reached ({format_value(sleep_actual, 'hours')} "
+                    f"of {format_value(sleep_target, 'hours')})."
+                )
+            else:
+                st.info(
+                    f"{format_value(sleep_target - sleep_actual, 'hours')} "
+                    "below the sleep goal."
+                )
+        else:
+            st.info("No sleep goal was entered for this day.")
+
+        comparison_rows = []
+        for activity, (actual_field, target_field) in GOAL_ACTIVITY_COLUMNS.items():
+            actual = goal[actual_field]
+            target = goal[target_field]
+            if pd.isna(target) or target <= 0:
+                status = "No goal"
+                difference = pd.NA
+            elif pd.isna(actual):
+                status = "No actual value"
+                difference = pd.NA
+            else:
+                difference = actual - target
+                status = (
+                    "Goal reached"
+                    if actual >= target
+                    else f"Below by {format_value(target - actual, 'hours')}"
+                )
+            comparison_rows.append(
+                {
+                    "Activity": activity,
+                    "Actual (hours)": actual,
+                    "Goal (hours)": target,
+                    "Difference (hours)": difference,
+                    "Status": status,
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(comparison_rows),
+            hide_index=True,
+            width="stretch",
+        )
 
     st.subheader("Selected day's recorded activities")
     st.caption(
@@ -215,7 +393,7 @@ def show_csv_dashboard(
     )
     activity_chart_data = pd.DataFrame(
         [
-            (label, day[field])
+            (label, day.get(field, pd.NA))
             for label, field in CSV_ACTIVITY_COLUMNS.items()
         ],
         columns=["Activity", "Hours"],
@@ -241,10 +419,11 @@ def show_csv_dashboard(
     with st.expander("Daily record details"):
         st.write(
             "Completed commute sessions: "
-            f"{format_value(day['completed_commute_sessions'])}"
+            f"{format_value(day.get('completed_commute_sessions', pd.NA))}"
         )
         st.write(
-            f"Recorded sleep sessions: {format_value(day['completed_sleep_sessions'])}"
+            f"Recorded sleep sessions: "
+            f"{format_value(day.get('completed_sleep_sessions', pd.NA))}"
         )
 
     st.divider()
@@ -298,6 +477,70 @@ def show_csv_dashboard(
             hide_index=True,
             width="stretch",
         )
+
+        entered_goals = goal_satisfaction.loc[goal_satisfaction["goal_entered"]]
+        if not entered_goals.empty:
+            sleep_trend = entered_goals[
+                ["date", "sleep_actual_hours", "sleep_target_hours"]
+            ].rename(
+                columns={
+                    "sleep_actual_hours": "Sleep entered",
+                    "sleep_target_hours": "Sleep goal",
+                }
+            ).melt(
+                id_vars="date",
+                var_name="Measure",
+                value_name="Hours",
+            ).dropna()
+            st.subheader("Sleep entered vs daily goal")
+            st.altair_chart(
+                make_interactive_trend_chart(
+                    sleep_trend,
+                    "date",
+                    "Measure",
+                    "Date",
+                    "Hours",
+                ),
+                width="stretch",
+                theme="streamlit",
+            )
+
+            satisfaction_trend = entered_goals[
+                ["date", "satisfaction_points"]
+            ].dropna()
+            if not satisfaction_trend.empty:
+                satisfaction_chart = (
+                    alt.Chart(satisfaction_trend)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X(
+                            "date:T",
+                            title="Date",
+                            axis=alt.Axis(format="%b %d", labelAngle=0),
+                        ),
+                        y=alt.Y(
+                            "satisfaction_points:Q",
+                            title="Satisfaction points",
+                        ),
+                        tooltip=[
+                            alt.Tooltip(
+                                "date:T",
+                                title="Date",
+                                format="%Y-%m-%d",
+                            ),
+                            alt.Tooltip(
+                                "satisfaction_points:Q",
+                                title="Satisfaction points",
+                            ),
+                        ],
+                    )
+                )
+                st.subheader("Daily satisfaction points")
+                st.altair_chart(
+                    satisfaction_chart,
+                    width="stretch",
+                    theme="streamlit",
+                )
 
     with weekly_tab:
         weekly_activity_columns = {
@@ -529,8 +772,15 @@ def main() -> None:
         "weekly": PUBLISHED_DATA_DIR / "weekly_dashboard_summary.csv",
         "overall": PUBLISHED_DATA_DIR / "overall_dashboard_summary.csv",
     }
+    local_goal_satisfaction_file = DATA_DIR / "daily_goals_satisfaction.csv"
+    published_goal_satisfaction_file = (
+        PUBLISHED_DATA_DIR / "daily_goals_satisfaction.csv"
+    )
     with st.sidebar.expander("Upload CSV summaries", expanded=True):
-        st.caption("Upload all three summary CSV files to use your own data.")
+        st.caption(
+            "Upload all three summary CSV files to use your own data. "
+            "Daily goals and satisfaction are optional."
+        )
         daily_upload = st.file_uploader(
             "Daily summary CSV",
             type="csv",
@@ -547,6 +797,12 @@ def main() -> None:
             "Overall summary CSV",
             type="csv",
             key="overall_summary_upload",
+            max_upload_size=10,
+        )
+        goal_satisfaction_upload = st.file_uploader(
+            "Daily goals and satisfaction CSV (optional)",
+            type="csv",
+            key="goal_satisfaction_upload",
             max_upload_size=10,
         )
 
@@ -576,6 +832,9 @@ def main() -> None:
             OVERALL_REQUIRED_COLUMNS,
             ("tracking_start_date", "tracking_end_date"),
         )
+        goal_satisfaction = read_goal_satisfaction_csv(
+            uploaded_file=goal_satisfaction_upload,
+        )
     else:
         default_files = (
             local_files
@@ -603,12 +862,32 @@ def main() -> None:
             OVERALL_REQUIRED_COLUMNS,
             ("tracking_start_date", "tracking_end_date"),
         )
+        if goal_satisfaction_upload is not None:
+            goal_satisfaction = read_goal_satisfaction_csv(
+                uploaded_file=goal_satisfaction_upload,
+            )
+        else:
+            default_goal_file = (
+                local_goal_satisfaction_file
+                if local_goal_satisfaction_file.is_file()
+                else published_goal_satisfaction_file
+            )
+            goal_satisfaction = read_goal_satisfaction_csv(
+                file_path=default_goal_file
+                if default_goal_file.is_file()
+                else None
+            )
 
     if len(overall) != 1:
         st.error("The overall summary file must contain exactly one row.")
         st.stop()
 
-    show_csv_dashboard(daily.sort_values("date"), weekly, overall)
+    show_csv_dashboard(
+        daily.sort_values("date"),
+        weekly,
+        overall,
+        goal_satisfaction,
+    )
 
 
 if __name__ == "__main__":

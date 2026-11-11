@@ -8,14 +8,24 @@ summary CSV files. Pandas prepares the data, and Altair renders the charts.
 - `daily_dashboard_summary.csv`
 - `weekly_dashboard_summary.csv`
 - `overall_dashboard_summary.csv`
+- `daily_goals_satisfaction.csv` (optional)
 
-Upload all three files in the **Upload CSV summaries** section in the left
-sidebar to view a dataset. Each file must contain the required columns for its
-daily, weekly, or overall summary. If no files are uploaded, the dashboard
-reads the matching files from the local `data/` folder when all three are
+Upload the three activity summaries in the **Upload CSV summaries** section in
+the left sidebar to view a dataset. Each file must contain the required columns
+for its daily, weekly, or overall summary. The optional daily goals and
+satisfaction summary can also be uploaded; it must use the same columns as
+`public_data/daily_goals_satisfaction.csv`. If no summary files are uploaded,
+the dashboard reads the matching files from local `data/` when all three are
 available; otherwise it uses the published summaries in `public_data/`. Partial
-uploads are not combined with default files; all three uploads are required as
-a set. Each file is limited to 10 MB.
+summary uploads are not combined with default files; all three are required as
+a set. Each upload is limited to 10 MB.
+
+Daily goals and satisfaction are based only on unique manual survey responses.
+Automatic survey records (including the automatic `99` satisfaction value) are
+not counted. Days without a manual entry display **No goal** and **Not entered**.
+Sleep actual and target hours are shown side by side with the difference and a
+progress indicator; the actual value is the one Aleks entered in the survey,
+not the sensor-derived average sleep-session duration.
 
 The local CSV files are excluded by `.gitignore` because they may contain user
 identifiers. Do not commit them or deploy them with the application source.
@@ -26,8 +36,9 @@ review the provider's privacy terms before uploading personal data.
 The Render deployment opens with the sanitized summary data in `public_data/`.
 Those activity summaries are included in the public GitHub repository and are
 visible to anyone who can access the dashboard. The source CSVs in `data/` stay
-local and ignored; identifiers and GPS diagnostic fields are not included in
-the published copies.
+local and ignored; identifiers, timestamps, and GPS diagnostic fields are not
+included in the published copies. The sanitized goal/satisfaction summaries
+are also public so the hosted dashboard can display them.
 
 ## What the dashboard shows
 
