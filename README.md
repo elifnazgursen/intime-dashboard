@@ -50,9 +50,11 @@ streamlit run app.py
 
 Streamlit prints the local URL, usually <http://localhost:8501>.
 
-## Deploy
+## Deploy on Render
 
-The app can be deployed from the public GitHub repository
-`elifnazgursen/intime-dashboard` on Streamlit Community Cloud by selecting
-`app.py` as the application entry point. The deployed URL will be publicly
-accessible; visitors upload their own three CSV files in the sidebar.
+The repository includes a Render Blueprint in `render.yaml`. Create a new
+Blueprint on Render and connect the public GitHub repository
+`elifnazgursen/intime-dashboard`. Render will build and start the Streamlit app
+from this configuration. The deployed URL is public; visitors upload their own
+three CSV files in the sidebar. The local user CSVs are not part of the
+repository or deployment.
