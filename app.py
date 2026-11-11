@@ -7,6 +7,7 @@ import streamlit as st
 
 
 DATA_DIR = Path(__file__).parent / "data"
+PUBLISHED_DATA_DIR = Path(__file__).parent / "public_data"
 
 
 DAILY_REQUIRED_COLUMNS = {
@@ -523,6 +524,11 @@ def main() -> None:
         "weekly": DATA_DIR / "weekly_dashboard_summary.csv",
         "overall": DATA_DIR / "overall_dashboard_summary.csv",
     }
+    published_files = {
+        "daily": PUBLISHED_DATA_DIR / "daily_dashboard_summary.csv",
+        "weekly": PUBLISHED_DATA_DIR / "weekly_dashboard_summary.csv",
+        "overall": PUBLISHED_DATA_DIR / "overall_dashboard_summary.csv",
+    }
     with st.sidebar.expander("Upload CSV summaries", expanded=True):
         st.caption("Upload all three summary CSV files to use your own data.")
         daily_upload = st.file_uploader(
@@ -570,28 +576,33 @@ def main() -> None:
             OVERALL_REQUIRED_COLUMNS,
             ("tracking_start_date", "tracking_end_date"),
         )
-    elif all(file_path.is_file() for file_path in local_files.values()):
+    else:
+        default_files = (
+            local_files
+            if all(file_path.is_file() for file_path in local_files.values())
+            else published_files
+        )
+        if not all(file_path.is_file() for file_path in default_files.values()):
+            st.info("Upload the daily, weekly, and overall summary CSV files to begin.")
+            st.stop()
         daily = read_csv_file(
-            local_files["daily"],
+            default_files["daily"],
             "Daily summary",
             DAILY_REQUIRED_COLUMNS,
             ("date",),
         )
         weekly = read_csv_file(
-            local_files["weekly"],
+            default_files["weekly"],
             "Weekly summary",
             WEEKLY_REQUIRED_COLUMNS,
             ("week_start", "week_end"),
         )
         overall = read_csv_file(
-            local_files["overall"],
+            default_files["overall"],
             "Overall summary",
             OVERALL_REQUIRED_COLUMNS,
             ("tracking_start_date", "tracking_end_date"),
         )
-    else:
-        st.info("Upload the daily, weekly, and overall summary CSV files to begin.")
-        st.stop()
 
     if len(overall) != 1:
         st.error("The overall summary file must contain exactly one row.")

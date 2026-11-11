@@ -12,15 +12,22 @@ summary CSV files. Pandas prepares the data, and Altair renders the charts.
 Upload all three files in the **Upload CSV summaries** section in the left
 sidebar to view a dataset. Each file must contain the required columns for its
 daily, weekly, or overall summary. If no files are uploaded, the dashboard
-reads the matching files from the local `data/` folder when available. Partial
-uploads are not combined with local files; all three uploads are required as a
-set. Each file is limited to 10 MB.
+reads the matching files from the local `data/` folder when all three are
+available; otherwise it uses the published summaries in `public_data/`. Partial
+uploads are not combined with default files; all three uploads are required as
+a set. Each file is limited to 10 MB.
 
 The local CSV files are excluded by `.gitignore` because they may contain user
 identifiers. Do not commit them or deploy them with the application source.
 The application does not write uploaded CSV files to the repository or local
 disk. They are processed by the hosting provider while the dashboard runs, so
 review the provider's privacy terms before uploading personal data.
+
+The Render deployment opens with the sanitized summary data in `public_data/`.
+Those activity summaries are included in the public GitHub repository and are
+visible to anyone who can access the dashboard. The source CSVs in `data/` stay
+local and ignored; identifiers and GPS diagnostic fields are not included in
+the published copies.
 
 ## What the dashboard shows
 
@@ -56,5 +63,5 @@ The repository includes a Render Blueprint in `render.yaml`. Create a new
 Blueprint on Render and connect the public GitHub repository
 `elifnazgursen/intime-dashboard`. Render will build and start the Streamlit app
 from this configuration. The deployed URL is public; visitors upload their own
-three CSV files in the sidebar. The local user CSVs are not part of the
-repository or deployment.
+three CSV files in the sidebar or view the sanitized preloaded summary dataset.
+The original CSV files in `data/` are not part of the repository or deployment.
