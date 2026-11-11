@@ -1,45 +1,58 @@
 # InTime Activity Dashboard
 
-A beginner-friendly activity dashboard built with Python, Streamlit, pandas,
-Altair, and PostgreSQL.
+A Streamlit dashboard for the provided daily, weekly, and overall activity
+summary CSV files. Pandas prepares the data, and Altair renders the charts.
 
-## Features
+## Data files
 
-- Daily free time, distance travelled, activity duration, social time, and score
-- Daily data table with grouping and sorting
-- Sleep and social-life comparison chart
-- PostgreSQL data loading, with sample data used when `DATABASE_URL` is unset
+- `daily_dashboard_summary.csv`
+- `weekly_dashboard_summary.csv`
+- `overall_dashboard_summary.csv`
+
+Upload all three files in the **Upload CSV summaries** section in the left
+sidebar to view a dataset. Each file must contain the required columns for its
+daily, weekly, or overall summary. If no files are uploaded, the dashboard
+reads the matching files from the local `data/` folder when available. Partial
+uploads are not combined with local files; all three uploads are required as a
+set. Each file is limited to 10 MB.
+
+The local CSV files are excluded by `.gitignore` because they may contain user
+identifiers. Do not commit them or deploy them with the application source.
+The application does not write uploaded CSV files to the repository or local
+disk. They are processed by the hosting provider while the dashboard runs, so
+review the provider's privacy terms before uploading personal data.
+
+## What the dashboard shows
+
+- A selected day's commute duration, estimated distance, and average recorded
+  sleep-session duration
+- Daily study, hobby, and eating durations
+- Daily and weekly trends with clickable chart legends
+- A compact full-period summary
+
+The selected-day activity comparison is a horizontal bar chart. Daily and
+weekly trends are line charts, with dates on the horizontal axis and hours on
+the vertical axis. Click a legend item to highlight that series; the other
+lines fade into the background. The chart data is reshaped with Pandas before
+Altair encodes the axes, colors, and tooltips.
+
+The sleep value in these files is an average recorded session, not a daily
+total. Installation identifiers and GPS diagnostic fields are hidden.
 
 ## Run locally
 
-1. Create and activate a virtual environment:
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-2. Install dependencies and start the dashboard:
-
-   ```bash
-   pip install -r requirements.txt
-   streamlit run app.py
-   ```
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
 
 Streamlit prints the local URL, usually <http://localhost:8501>.
 
-## PostgreSQL
+## Deploy
 
-1. Create a database and run [`database/schema.sql`](database/schema.sql).
-2. Set the `DATABASE_URL` environment variable to your PostgreSQL connection
-   string.
-3. Run `streamlit run app.py` again.
-
-Example format (replace the placeholders locally; do not commit credentials):
-
-```text
-postgresql://username:password@localhost:5432/database_name
-```
-
-Without `DATABASE_URL`, the dashboard uses the example records in
-[`sample_data.py`](sample_data.py).
+The app can be deployed from the public GitHub repository
+`elifnazgursen/intime-dashboard` on Streamlit Community Cloud by selecting
+`app.py` as the application entry point. The deployed URL will be publicly
+accessible; visitors upload their own three CSV files in the sidebar.

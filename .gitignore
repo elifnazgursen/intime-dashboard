@@ -8,3 +8,4 @@ dist/
 !.env.example
 .streamlit/secrets.toml
 .DS_Store
+/data/*.csv
